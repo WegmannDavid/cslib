@@ -1,0 +1,127 @@
+module
+
+public import Cslib.Languages.LambdaCalculus.LocallyNameless.Untyped.FullBeta
+
+public section
+
+namespace Cslib
+
+universe u
+
+variable {Var : Type u}
+
+
+namespace LambdaCalculus.LocallyNameless.Untyped.Term
+
+attribute [grind =] Finset.union_singleton
+
+inductive SN {α} : Term α → Prop
+| sn t : (∀ t', (t ⭢βᶠ t') → SN t') → SN t
+
+@[aesop safe]
+lemma sn_step {t t' : Term Var} (t_st_t' : t ⭢βᶠ t') (sn_t : SN t) : SN t' := by
+  cases sn_t; grind
+
+lemma sn_fvar {x : Var} : SN (Term.fvar x) := by
+  constructor
+  intro t' hstep
+  cases hstep
+
+lemma sn_app (t s : Term Var) :
+  SN t →
+  SN s →
+  (∀ {t' s' : Term Var}, t ↠βᶠ t'.abs → s ↠βᶠ s' → SN (t' ^ s')) →
+  SN (t.app s) := by
+  sorry
+
+
+
+lemma sn_app_left (M N : Term Var) : Term.LC N → SN (M.app N) → SN M := by
+  intro lc_N h_sn
+  generalize Heq : M.app N = P
+  rw[Heq] at h_sn
+  revert M N
+  induction h_sn
+  · case sn P h_sn ih =>
+    intro M N lc_N Heq
+    rw[←Heq] at ih
+    constructor
+    intro M' h_step
+    apply ih (M'.app N)
+    apply Term.FullBeta.appR <;> assumption
+    · apply lc_N
+    · rfl
+
+@[aesop safe constructors]
+inductive neutral : Term Var → Prop
+| bvar : ∀ n, neutral (Term.bvar n)
+| fvar : ∀ x, neutral (Term.fvar x)
+| app : ∀ t1 t2, neutral t1 → SN t2 → neutral (Term.app t1 t2)
+
+@[aesop safe]
+lemma neutral_step {t : Term Var} :
+  neutral t → ∀ t', t ⭢βᶠ t' → neutral t' := by
+  intro Hneut
+  induction Hneut <;> intro t' step
+  · case bvar n =>
+      cases step
+  · case fvar x =>
+      cases step
+  · case app IH Hneut =>
+      cases step <;> try aesop
+      · contradiction
+
+@[aesop safe]
+lemma neutral_mst {t t' : Term Var} :
+  neutral t → t ↠βᶠ t' → neutral t' := by
+  intro Hneut h_red
+  induction h_red <;> aesop
+
+lemma neutral_sn {t : Term Var} (Hneut : neutral t) : SN t := by
+  induction Hneut
+  · case bvar n => constructor; intro t' hstep; cases hstep
+  · case fvar x => constructor; intro t' hstep; cases hstep
+  · case app t1 t'_neut t1_sn t1'_sn =>
+      apply sn_app <;> try assumption
+      intro t1' t2' hstep1 hstep2
+      have H_neut := neutral_mst t'_neut hstep1
+      contradiction
+
+def multi_app (f : Term Var) (args : List (Term Var)) :=
+  match args with
+  | []      => f
+  | a :: as => Term.app (multi_app f as) a
+
+--lemma open_sn : ∀ {i} {M : Term Var} {N : Term Var},
+--  SN N →
+--  SN (M ⟦ i ↝ N ⟧) := by sorry
+
+lemma abs_sn : ∀ {M : Term Var},
+  SN M → SN (Term.abs M) := by
+  intro M sn_M
+  induction sn_M
+  · constructor
+    intro M' h_step
+
+lemma app_sn : ∀ {t u : Term Var},
+  SN t →
+  SN u →
+  (∀ t' s', t ↠βᶠ (Term.abs t') → s ↠βᶠ s' → SN (t' ^ s')) →
+  SN (Term.app t u) := by sorry
+
+lemma multi_app_sn : ∀ {l} {t u : Term Var},
+  SN u →
+  SN (multi_app (t ^ u) l) →
+  ---------------------------
+  SN (multi_app ((Term.abs t).app u) l) := by
+  intro l
+  induction l <;> intros t u sn_u sn_app
+  · case nil =>
+      rw[multi_app]
+      rw[multi_app] at sn_app
+      apply app_sn <;> try assumption
+      · sorry
+      · intro t' u' hstep1 hstep2
+        sorry
+  · case cons a l ih =>
+      sorry
