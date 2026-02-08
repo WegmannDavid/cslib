@@ -32,9 +32,21 @@ lemma sn_app (t s : Term Var) :
   SN s →
   (∀ {t' s' : Term Var}, t ↠βᶠ t'.abs → s ↠βᶠ s' → SN (t' ^ s')) →
   SN (t.app s) := by
-  sorry
-
-
+  intro h_sn_t h_sn_s hβ
+  induction h_sn_t generalizing s with | sn t ht ih_t =>
+  induction h_sn_s with | sn s hs ih_s =>
+  constructor
+  intro u hstep
+  cases hstep with
+  | beta _ _ => apply hβ <;> rfl
+  | appL _ h_s_red =>
+    apply ih_s _ h_s_red
+    intro t' s'' hstep1 hstep2
+    exact hβ hstep1 (Relation.ReflTransGen.head h_s_red hstep2)
+  | appR _ h_t_red =>
+    apply ih_t _ h_t_red _ (SN.sn s hs)
+    intro t' s' hstep1 hstep2
+    exact hβ (Relation.ReflTransGen.head h_t_red hstep1) hstep2
 
 lemma sn_app_left (M N : Term Var) : Term.LC N → SN (M.app N) → SN M := by
   intro lc_N h_sn
