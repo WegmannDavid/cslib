@@ -18,19 +18,33 @@ open scoped Term
 
 
 
+abbrev Environment (Var : Type u) := Context Var (Term Var)
 
-
-def fv (Ns : Context Var (Term Var)) : Finset Var :=
-  match Ns with
-  | [] => {}
-  | ⟨ _, sub ⟩ :: Ns' => sub.fv ∪ fv Ns'
-
-def multi_subst (σ : Context Var (Term Var)) (M : Term Var) : Term Var :=
+def multi_subst (σ : Environment Var) (M : Term Var) : Term Var :=
   match σ with
   | [] => M
   | ⟨ i, sub ⟩ :: σ' => (multi_subst σ' M) [ i := sub ]
 
-def multi_subst_fvar_fresh (Ns : Context Var (Term Var)) :
+def fv (Ns : Environment Var) : Finset Var :=
+  match Ns with
+  | [] => {}
+  | ⟨ _, sub ⟩ :: Ns' => sub.fv ∪ fv Ns'
+
+@[simp]
+def context_LC (Γ : Environment Var) : Prop :=
+  ∀ {x M}, ⟨ x, M ⟩ ∈ Γ → LC M
+
+lemma context_LC_cons {Γ : Environment Var} {x : Var} {sub : Term Var} :
+  LC sub → context_LC Γ → context_LC (⟨ x, sub ⟩ :: Γ) := by
+  intro lc_sub lc_Γ y σ h_mem
+  cases h_mem
+  · assumption
+  · apply lc_Γ
+    assumption
+
+
+
+def multi_subst_fvar_fresh (Ns : Environment Var) :
   ∀ x ∉ Ns.dom, multi_subst Ns (Term.fvar x) = Term.fvar x := by
   induction Ns <;> intro x h_fresh
   · case nil =>
@@ -45,7 +59,7 @@ def multi_subst_fvar_fresh (Ns : Context Var (Term Var)) :
 
 lemma multi_subst_preserves_not_fvar {x : Var}
   (M : Term Var)
-  (Ns : Context Var (Term Var))
+  (Ns : Environment Var)
   (nmem : x ∉ M.fv ∪ fv Ns) :
   x ∉ (multi_subst Ns M).fv := by
   induction Ns
@@ -60,13 +74,13 @@ lemma multi_subst_preserves_not_fvar {x : Var}
 
 
 
-def multi_subst_app (M N : Term Var) (Ps : Context Var (Term Var)) :
+def multi_subst_app (M N : Term Var) (Ps : Environment Var) :
         multi_subst Ps (Term.app M N) = Term.app (multi_subst Ps M) (multi_subst Ps N) := by
   induction Ps
   · rfl
   · case cons N Ns ih => rw[multi_subst,multi_subst,ih]; rfl
 
-def multi_subst_abs (M : Term Var) (Ns : Context Var (Term Var)) :
+def multi_subst_abs (M : Term Var) (Ns : Environment Var) :
     multi_subst Ns (Term.abs M) =
     Term.abs (multi_subst Ns M) := by
   induction Ns
@@ -96,73 +110,96 @@ lemma open'_fvar_subst (M N : Term Var) (x : Var) (H : x ∉ Term.fv M) :
       rw[ih_l H.1]
       rw[ih_r H.2]
 
-lemma swap_subst_fresh (M N P : Term Var) (x y : Var) :
-  (M [x := N]) [y := P] = (M [y := P]) [x := N] := by
-  sorry
+
+lemma multi_subst_open_var (M : Term Var) (Ns : Environment Var) (x : Var) :
+  x ∉ Ns.dom →
+  context_LC Ns →
+  (multi_subst Ns (M ^ (Term.fvar x))) =
+  (multi_subst Ns M) ^ (Term.fvar x) := by
+  intro h_ndom h_lc
+  induction Ns with
+  | nil => rfl
+  | cons N Ns ih =>
+    rw[multi_subst, multi_subst]
+    rw[ih]
+    · rw[subst_open_var] <;> aesop
+    · simp_all
+    aesop
+
+inductive saturated (S : Set (Term Var)) : Prop :=
+| intro : (∀ M ∈ S, LC M) →
+          (∀ M ∈ S, SN M) →
+          (∀ M, neutral M → LC M → M ∈ S) →
+          (∀ M N P, LC N → SN N → multi_app (M ^ N) P ∈ S → multi_app ((Term.abs M).app N) P ∈ S) →
+          saturated S
 
 
-lemma multi_subst_open (M P : Term Var) (Ns : Context Var (Term Var)) (x : Var) :
-  x ∉ M.fv ∪ fv Ns →
-  (multi_subst Ns (M ^ (Term.fvar x))) [x := P] =
-  (multi_subst Ns M) ^ P := by
-  intro h_fresh
-  induction Ns
-  · unfold Term.open'
-    rw[multi_subst, multi_subst, open'_fvar_subst]
-    simp_all
-  · case cons N Ns ih =>
-      rw[multi_subst, multi_subst]
-      rw[←swap_subst_fresh]
-      rw[ih]
-      rw[subst_open]
-      sorry
-
-
-def is_saturated (S : Set (Term Var)) : Prop :=
- (∀ M ∈ S, SN M) ∧
- (∀ M, neutral M → M ∈ S) ∧
- (∀ M N P, SN N → multi_app (M ^ N) P ∈ S → multi_app ((Term.abs M).app N) P ∈ S)
-
+@[simp]
 def semanticMap (τ : Ty Base) : Set (Term Var) :=
   match τ with
-  | Ty.base _ => { t : Term Var | SN t }
+  | Ty.base _ => { t : Term Var | SN t ∧ LC t }
   | Ty.arrow τ₁ τ₂ =>
     { t : Term Var | ∀ s : Term Var, s ∈ semanticMap τ₁ → (Term.app t s) ∈ semanticMap τ₂ }
 
+lemma multi_app_lc : ∀ {M P : Term Var} {Ns : List (Term Var)},
+  LC (multi_app M Ns) → LC P → LC (multi_app P Ns) := by
+  intro N P Ns
+  induction Ns <;> intro lc_Ns lc_P
+  · assumption
+  · case cons a l ih =>
+      rw[multi_app]
+      rw[multi_app] at lc_Ns
+      cases lc_Ns
+      grind
+
 def semanticMap_saturated (τ : Ty Base) :
-    @is_saturated Var (semanticMap τ) := by
+    @saturated Var (semanticMap τ) := by
   induction τ
   · case base b =>
       constructor
-      · intro M hM
-        exact hM
-      · constructor
-        · intro M hneut
-          apply neutral_sn
-          assumption
-        · intro M N P sn_N h_app
-          apply multi_app_sn <;> assumption
+      · simp_all
+      · simp_all
+      · simp_all[neutral_sn]
+      · intro M N P lc_N sn_N h_app
+        constructor
+        · simp_all[multi_app_sn]
+        · apply multi_app_lc
+          · apply h_app.2
+          · constructor
+            · apply LC.abs M.fv
+              intro x mem
+              sorry
+            · assumption
   · case arrow τ₁ τ₂ ih₁ ih₂ =>
       constructor
       · intro M hM
+        have H := ih₁.3 (.fvar (fresh {})) (.fvar (fresh {})) (.fvar (fresh {}))
+        specialize (hM (fvar (fresh {})) H)
+        apply (ih₂.1) at hM
+        cases hM
+        assumption
+      · intro M hM
         apply sn_app_left M (Term.fvar (fresh {}))
         · constructor
-        · apply ih₂.1
-          apply hM
-          apply ih₁.2.1
-          constructor
-      · constructor
-        · intro M hneut s hs
-          apply ih₂.2.1
-          apply neutral.app
+        · have H := ih₁.3 (.fvar (fresh {})) (.fvar (fresh {})) (.fvar (fresh {}))
+          specialize (hM (fvar (fresh {})) H)
+          apply ih₂.2 ; assumption
+      · intro M hneut mlc s hs
+        apply ih₂.3
+        · constructor
+          · assumption
+          · apply ih₁.2
+            assumption
+        · constructor
           · assumption
           · apply ih₁.1
-            exact hs
-        · intro M N P sn_N h_app s hs
-          apply ih₂.2.2 M N (s::P)
-          · apply sn_N
-          · apply h_app
             assumption
+      · intro M N P lc_N sn_N h_app s hs
+        apply ih₂.4 M N (s::P)
+        · apply lc_N
+        · apply sn_N
+        · apply h_app
+          assumption
 
 
 
@@ -175,8 +212,7 @@ lemma entails_context_empty {Γ : Context Var (Ty Base)} :
   entails_context [] Γ := by
   intro x τ h_mem
   rw[multi_subst]
-  apply (semanticMap_saturated τ).2.1
-  constructor
+  apply (semanticMap_saturated τ).3 <;> constructor
 
 
 lemma entails_context_cons (Ns : Context Var (Term Var)) (Γ : Context Var (Ty Base))
@@ -205,7 +241,7 @@ lemma entails_context_cons (Ns : Context Var (Term Var)) (Γ : Context Var (Ty B
 
 
 def entails (Γ : Context Var (Ty Base)) (t : Term Var) (τ : Ty Base) :=
-  ∀ Ns, (entails_context Ns Γ) → (multi_subst Ns t) ∈ semanticMap τ
+  ∀ Ns, context_LC Ns → (entails_context Ns Γ) → (multi_subst Ns t) ∈ semanticMap τ
 
 
 
@@ -215,35 +251,44 @@ theorem soundness {Γ : Context Var (Ty Base)} {t : Term Var} {τ : Ty Base} :
   intro derivation_t
   induction derivation_t
   · case var Γ xσ_mem_Γ =>
-      intro Ns hsat
+      intro Ns lc_Ns hsat
       apply hsat xσ_mem_Γ
   · case' abs σ Γ t τ L IH derivation_t =>
-      intro Ns hsat s hsat_s
+      intro Ns lc_Ns hsat s hsat_s
       rw[multi_subst_abs]
-      apply (semanticMap_saturated _).2.2 _ _ []
+      apply (semanticMap_saturated _).4 _ _ []
       · apply (semanticMap_saturated _).1
         assumption
+      · apply (semanticMap_saturated _).2
+        assumption
       · rw[multi_app]
-        set x := fresh (t.fv ∪ L ∪ Ns.dom ∪ fv Ns ∪ Context.dom Γ)
-        have hfresh : x ∉ t.fv ∪ L ∪ Ns.dom ∪ fv Ns ∪ Context.dom Γ := by apply fresh_notMem
+        set x := fresh (t.fv ∪ L ∪ Ns.dom ∪ fv Ns ∪ Context.dom Γ ∪ (multi_subst Ns t).fv)
+        have hfresh : x ∉ t.fv ∪ L ∪ Ns.dom ∪ fv Ns ∪ Context.dom Γ  ∪ (multi_subst Ns t).fv := by apply fresh_notMem
         have hfreshL : x ∉ L := by simp_all
         have H1 := derivation_t x hfreshL
         rw[entails] at H1
         specialize H1 (⟨x,s⟩ :: Ns)
-        rw [multi_subst, multi_subst_open] at H1
+        rw [multi_subst, multi_subst_open_var, ←subst_intro] at H1
         · apply H1
-          apply entails_context_cons <;> simp_all
+          · apply context_LC_cons
+            · apply (semanticMap_saturated _).1
+              assumption
+            · assumption
+          · apply entails_context_cons <;> simp_all
         · simp_all
+        · apply (semanticMap_saturated σ).1
+          assumption
+        · simp_all
+        · aesop
   · case app derivation_t derivation_t' IH IH' =>
-      intro Ns hsat
+      intro Ns lc_Ns hsat
       rw[multi_subst_app]
-      apply IH Ns hsat
-      apply IH' Ns hsat
+      apply IH Ns lc_Ns hsat
+      apply IH' Ns lc_Ns hsat
 
 theorem strong_norm {Γ} {t : Term Var} {τ : Ty Base} (der : Γ ⊢ t ∶ τ) : SN t := by
-  have H := soundness der
-  specialize H [] entails_context_empty
-  apply (semanticMap_saturated τ).1
+  have H := soundness der [] (by aesop) entails_context_empty
+  apply (semanticMap_saturated τ).2
   assumption
 
 end LambdaCalculus.LocallyNameless.Stlc

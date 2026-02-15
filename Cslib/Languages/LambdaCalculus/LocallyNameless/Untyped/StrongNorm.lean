@@ -32,7 +32,21 @@ lemma sn_app (t s : Term Var) :
   SN s →
   (∀ {t' s' : Term Var}, t ↠βᶠ t'.abs → s ↠βᶠ s' → SN (t' ^ s')) →
   SN (t.app s) := by
-  sorry
+  intro h_sn_t h_sn_s hβ
+  induction h_sn_t generalizing s with | sn t ht ih_t =>
+  induction h_sn_s with | sn s hs ih_s =>
+  constructor
+  intro u hstep
+  cases hstep with
+  | beta _ _ => apply hβ <;> rfl
+  | appL _ h_s_red =>
+    apply ih_s _ h_s_red
+    intro t' s'' hstep1 hstep2
+    exact hβ hstep1 (Relation.ReflTransGen.head h_s_red hstep2)
+  | appR _ h_t_red =>
+    apply ih_t _ h_t_red _ (SN.sn s hs)
+    intro t' s' hstep1 hstep2
+    exact hβ (Relation.ReflTransGen.head h_t_red hstep1) hstep2
 
 
 
@@ -86,42 +100,82 @@ lemma neutral_sn {t : Term Var} (Hneut : neutral t) : SN t := by
       intro t1' t2' hstep1 hstep2
       have H_neut := neutral_mst t'_neut hstep1
       contradiction
-
 def multi_app (f : Term Var) (args : List (Term Var)) :=
   match args with
   | []      => f
   | a :: as => Term.app (multi_app f as) a
 
---lemma open_sn : ∀ {i} {M : Term Var} {N : Term Var},
---  SN N →
---  SN (M ⟦ i ↝ N ⟧) := by sorry
+lemma abs_sn : ∀ {M N : Term Var},
+  SN (M ^ N)  → SN (Term.abs M) := by
+  intro M N sn_M
+  generalize h : (M ^ N) = M_open at sn_M
+  revert N M
+  induction sn_M with
+  | sn M_open h_sn ih =>
+      intro M N h
+      constructor
+      intro M' h_step
+      cases h_step with
+      | @abs h_M_red M' L H =>
+        specialize ih (M' ^ N)
+        rw[←h] at ih
+        apply ih
+        · sorry
+        · rfl
 
-lemma abs_sn : ∀ {M : Term Var},
-  SN M → SN (Term.abs M) := by
-  intro M sn_M
-  induction sn_M
-  · constructor
-    intro M' h_step
+lemma step_open : ∀ {M M' N : Term Var},
+  --LC N →
+  M ⭢βᶠ M' →
+  (M ^ N) ⭢βᶠ (M' ^ N) := by
+  intros M M' lc_n h_step
+  induction h_step with
+  | beta abs_lc n_lc => sorry
+  | appL lc_z st ih =>
+    apply FullBeta.appL
+    · sorry
+    · assumption
+  | appR lc_z st ih =>
+    apply FullBeta.appR
+    · sorry
+    · assumption
+  | abs L st ih => sorry
 
-lemma app_sn : ∀ {t u : Term Var},
-  SN t →
-  SN u →
-  (∀ t' s', t ↠βᶠ (Term.abs t') → s ↠βᶠ s' → SN (t' ^ s')) →
-  SN (Term.app t u) := by sorry
+/-
+lemma open_sn : ∀ {M N : Term Var},
+  SN (M ^ N) →
+  SN M := by
+  intro M N sn_M
+  generalize h : M ^ N = M_open at sn_M
+  revert M N
+  induction sn_M with
+  | sn M_open h_sn ih =>
+      intro M N h
+      constructor
+      intro M' h_step
+      apply ih (M' ^ N)
+      · rw[←h] at *
+        apply step_open
+        apply h_step
+      · rfl
+-/
 
-lemma multi_app_sn : ∀ {l} {t u : Term Var},
-  SN u →
-  SN (multi_app (t ^ u) l) →
+lemma multi_app_sn : ∀ {l} {t s : Term Var},
+  SN s →
+  SN (multi_app (t ^ s) l) →
   ---------------------------
-  SN (multi_app ((Term.abs t).app u) l) := by
+  SN (multi_app ((Term.abs t).app s) l) := by
   intro l
-  induction l <;> intros t u sn_u sn_app
+  induction l <;> intros t s sn_s tu_sn
   · case nil =>
       rw[multi_app]
-      rw[multi_app] at sn_app
-      apply app_sn <;> try assumption
-      · sorry
-      · intro t' u' hstep1 hstep2
+      rw[multi_app] at tu_sn
+      apply sn_app <;> try assumption
+      · apply (abs_sn tu_sn)
+      · intro t' s' hstep1 hstep2
         sorry
   · case cons a l ih =>
-      sorry
+      rw[multi_app]
+      apply sn_app
+      · apply ih
+        · assumption
+        · sorry
