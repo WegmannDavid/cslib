@@ -116,9 +116,6 @@ theorem beta_lc {M N : Term Var} (m_lc : M.abs.LC) (n_lc : LC N) : LC (M ^ N) :=
   cases m_lc with
   | abs => grind [fresh_exists <| free_union [fv] Var]
 
-@[scoped grind ←]
-theorem beta_lc_reverse {M N : Term Var} (m_lc : M.abs.LC) (n_lc : LC N) : LC (M ^ N) := by
-
 
 /-- Opening then closing is equivalent to substitution. -/
 @[scoped grind =]
