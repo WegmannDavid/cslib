@@ -120,7 +120,7 @@ lemma abs_sn : ∀ {M N : Term Var},
         specialize ih (M' ^ N)
         rw[←h] at ih
         apply ih
-        · sorry
+        · sorry -- True, maybe lc issue
         · rfl
 
 lemma step_open : ∀ {M M' N : Term Var},
@@ -162,7 +162,7 @@ lemma open_sn : ∀ {M N : Term Var},
 lemma multi_app_sn : ∀ {l} {t s : Term Var},
   SN s →
   SN (multi_app (t ^ s) l) →
-  ---------------------------
+  -------------------------------------
   SN (multi_app ((Term.abs t).app s) l) := by
   intro l
   induction l <;> intros t s sn_s tu_sn
@@ -179,3 +179,5 @@ lemma multi_app_sn : ∀ {l} {t s : Term Var},
       · apply ih
         · assumption
         · sorry
+      sorry
+      sorry

@@ -2,6 +2,7 @@ import Cslib.Foundations.Data.Relation
 import Cslib.Languages.LambdaCalculus.LocallyNameless.Stlc.Basic
 import Cslib.Languages.LambdaCalculus.LocallyNameless.Untyped.FullBeta
 import Cslib.Languages.LambdaCalculus.LocallyNameless.Untyped.StrongNorm
+import Cslib.Languages.LambdaCalculus.LocallyNameless.Untyped.LcAt
 
 namespace Cslib
 
@@ -142,15 +143,27 @@ def semanticMap (τ : Ty Base) : Set (Term Var) :=
     { t : Term Var | ∀ s : Term Var, s ∈ semanticMap τ₁ → (Term.app t s) ∈ semanticMap τ₂ }
 
 lemma multi_app_lc : ∀ {M P : Term Var} {Ns : List (Term Var)},
-  LC (multi_app M Ns) → LC P → LC (multi_app P Ns) := by
+  LC (multi_app M Ns) → (LC M → LC P) → LC (multi_app P Ns) := by
   intro N P Ns
   induction Ns <;> intro lc_Ns lc_P
-  · assumption
+  · simp_all[multi_app]
   · case cons a l ih =>
       rw[multi_app]
       rw[multi_app] at lc_Ns
       cases lc_Ns
       grind
+
+theorem lcAt_openRec_lcAt (M N : Term Var) (i : ℕ) :
+    LcAt i (M⟦i ↝ N⟧) → LcAt (i + 1) M := by
+  induction M generalizing i <;> try grind
+
+lemma open_abs_lc : forall {M N : Term Var},
+  LC (M ^ N) → LC (M.abs) := by
+  intro M N hlc
+  rw[←lcAt_iff_LC]
+  rw[←lcAt_iff_LC] at hlc
+  apply lcAt_openRec_lcAt _ _ _ hlc
+
 
 def semanticMap_saturated (τ : Ty Base) :
     @saturated Var (semanticMap τ) := by
@@ -165,10 +178,10 @@ def semanticMap_saturated (τ : Ty Base) :
         · simp_all[multi_app_sn]
         · apply multi_app_lc
           · apply h_app.2
-          · constructor
-            · apply LC.abs M.fv
-              intro x mem
-              sorry
+          · intro Hlc
+            constructor
+            · apply open_abs_lc
+              assumption
             · assumption
   · case arrow τ₁ τ₂ ih₁ ih₂ =>
       constructor
